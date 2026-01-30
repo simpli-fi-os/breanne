@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breanne - Intelligent Document Engine</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📄</text></svg>">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&family=Great+Vibes&family=Tangerine:wght@700&family=Alex+Brush&family=Sacramento&display=swap" rel="stylesheet">
+    
+    <!-- PDF Libraries -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
+    <!-- Firebase (for persistent storage - optional) -->
+    <script type="module">
+        // Firebase config will be added here when deploying
+        // import { initializeApp } from 'firebase/app';
+        // import { getFirestore } from 'firebase/firestore';
+        // const firebaseConfig = { ... };
+    </script>
+
+    <style>
+        :root {
+            --brand-navy: #003b46;
+            --brand-gold: #fca311;
+            --brand-light: #f8f9fa;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        h1, h2, h3, .brand-title {
+            font-family: 'Playfair Display', serif;
+        }
+        
+        /* Signature fonts */
+        .sig-great-vibes { font-family: 'Great Vibes', cursive; }
+        .sig-tangerine { font-family: 'Tangerine', cursive; font-weight: 700; }
+        .sig-alex-brush { font-family: 'Alex Brush', cursive; }
+        .sig-sacramento { font-family: 'Sacramento', cursive; }
+        
+        /* Form styling */
+        .form-section {
+            @apply bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6;
+        }
+        
+        .form-field {
+            @apply mb-4;
+        }
+        
+        .form-label {
+            @apply block text-sm font-medium text-slate-700 mb-1;
+        }
+        
+        .form-input {
+            @apply block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm;
+        }
+        
+        .form-input:required {
+            border-left: 3px solid var(--brand-gold);
+        }
+        
+        .signature-canvas {
+            border: 2px dashed #cbd5e1;
+            background: linear-gradient(to bottom, #fafafa 0%, #ffffff 100%);
+            cursor: crosshair;
+            touch-action: none;
+        }
+        
+        .signature-canvas.signed {
+            border-color: #10b981;
+            border-style: solid;
+        }
+        
+        /* PDF Preview styling */
+        .pdf-page {
+            background: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1rem;
+            position: relative;
+        }
+        
+        .pdf-page::after {
+            content: attr(data-page);
+            position: absolute;
+            bottom: 0.5rem;
+            right: 0.5rem;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        /* Loading states */
+        .spinner {
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid var(--brand-navy);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Print styles */
+        @media print {
+            .no-print { display: none !important; }
+            .pdf-page { box-shadow: none; page-break-after: always; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+    <!-- App Container -->
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 no-print">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <a href="/" class="flex items-center space-x-3">
+                        <svg class="h-8 w-8" style="color: var(--brand-navy)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <h1 class="text-2xl font-bold" style="color: var(--brand-navy)">Breanne</h1>
+                    </a>
+                    <div id="step-indicator" class="hidden sm:flex items-center space-x-2 text-sm">
+                        <span id="step-1" class="px-3 py-1 rounded-full bg-indigo-100 text-indigo-700">Upload</span>
+                        <span>→</span>
+                        <span id="step-2" class="px-3 py-1 rounded-full bg-slate-100 text-slate-500">Fill</span>
+                        <span>→</span>
+                        <span id="step-3" class="px-3 py-1 rounded-full bg-slate-100 text-slate-500">Download</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow">
+            <!-- Step 1: Upload -->
+            <section id="upload-section" class="max-w-3xl mx-auto py-12 px-4">
+                <div class="text-center mb-8 fade-in">
+                    <h2 class="text-3xl font-bold text-slate-900">Upload Your Document</h2>
+                    <p class="mt-2 text-slate-600">We'll automatically detect fillable fields and create an elegant form.</p>
+                </div>
+                
+                <div id="drop-zone" class="relative border-2 border-dashed border-slate-300 rounded-xl p-12 bg-white hover:border-indigo-400 hover:bg-indigo-50/30 transition-all duration-200 cursor-pointer fade-in">
+                    <input type="file" id="file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".pdf,.doc,.docx">
+                    <div class="text-center">
+                        <svg class="mx-auto h-12 w-12 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                        </svg>
+                        <p class="mt-4 text-lg text-slate-700">
+                            <span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop
+                        </p>
+                        <p class="mt-1 text-sm text-slate-500">PDF or DOCX up to 25MB</p>
+                    </div>
+                </div>
+                
+                <div id="upload-error" class="hidden mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"></div>
+            </section>
+
+            <!-- Loading -->
+            <section id="loading-section" class="hidden max-w-3xl mx-auto py-24 px-4 text-center">
+                <div class="spinner mx-auto"></div>
+                <p class="mt-4 text-slate-600 font-medium" id="loading-message">Analyzing document...</p>
+            </section>
+
+            <!-- Step 2: Fill Form -->
+            <section id="form-section" class="hidden max-w-4xl mx-auto py-8 px-4">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-900" id="form-title">Document Form</h2>
+                        <p class="text-sm text-slate-500" id="form-subtitle"></p>
+                    </div>
+                    <button id="back-btn" class="text-sm text-slate-500 hover:text-slate-700 flex items-center">
+                        <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                        </svg>
+                        Start Over
+                    </button>
+                </div>
+                
+                <form id="document-form" class="space-y-6">
+                    <!-- Form sections will be inserted here -->
+                </form>
+                
+                <!-- Form Actions -->
+                <div class="sticky bottom-0 bg-white/90 backdrop-blur border-t border-slate-200 py-4 px-6 mt-8 -mx-4 rounded-b-lg flex items-center justify-between">
+                    <div id="validation-status" class="text-sm text-slate-500">
+                        <span id="filled-count">0</span> of <span id="total-count">0</span> fields completed
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button type="button" id="preview-btn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200">
+                            Preview PDF
+                        </button>
+                        <button type="button" id="generate-btn" class="px-6 py-2 text-sm font-medium text-white rounded-md" style="background-color: var(--brand-navy)" disabled>
+                            Generate & Download PDF
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: Download -->
+            <section id="download-section" class="hidden max-w-3xl mx-auto py-12 px-4 text-center">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 fade-in">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                        <svg class="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                    <h2 class="mt-4 text-2xl font-bold text-slate-900">Document Ready!</h2>
+                    <p class="mt-2 text-slate-600">Your document has been generated with all fields filled.</p>
+                    
+                    <div class="mt-8 flex flex-col sm:flex-row items-center justify-center space-y-3 sm:space-y-0 sm:space-x-4">
+                        <a id="download-link" href="#" class="inline-flex items-center px-6 py-3 text-white rounded-md font-medium" style="background-color: var(--brand-navy)">
+                            <svg class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download PDF
+                        </a>
+                        <a id="email-link" href="#" class="inline-flex items-center px-6 py-3 text-indigo-700 bg-indigo-100 rounded-md font-medium hover:bg-indigo-200">
+                            <svg class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                            Email a Copy
+                        </a>
+                    </div>
+                    
+                    <button id="new-doc-btn" class="mt-8 text-sm text-slate-500 hover:text-slate-700">
+                        Process another document →
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Signature Modal -->
+        <div id="signature-modal" class="hidden fixed inset-0 bg-gray-900/75 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 fade-in">
+                <h3 class="text-xl font-semibold text-slate-900">Add Your Signature</h3>
+                <p class="text-sm text-slate-500 mt-1">Type your name and select a style, or draw your signature.</p>
+                
+                <!-- Tabs -->
+                <div class="mt-4 flex border-b border-slate-200">
+                    <button id="tab-typed" class="px-4 py-2 text-sm font-medium border-b-2 border-indigo-500 text-indigo-600">Typed</button>
+                    <button id="tab-drawn" class="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700">Draw</button>
+                </div>
+                
+                <!-- Typed Signature -->
+                <div id="typed-signature-panel" class="mt-4">
+                    <label class="block text-sm font-medium text-slate-700">Full Name</label>
+                    <input type="text" id="sig-name-input" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Enter your full legal name">
+                    
+                    <label class="block text-sm font-medium text-slate-700 mt-4">Select Style</label>
+                    <div id="sig-styles" class="mt-2 grid grid-cols-2 gap-3">
+                        <div class="sig-style-option p-4 border border-slate-200 rounded-lg cursor-pointer hover:border-indigo-400 text-center sig-great-vibes text-2xl" data-font="Great Vibes">Great Vibes</div>
+                        <div class="sig-style-option p-4 border border-slate-200 rounded-lg cursor-pointer hover:border-indigo-400 text-center sig-tangerine text-3xl" data-font="Tangerine">Tangerine</div>
+                        <div class="sig-style-option p-4 border border-slate-200 rounded-lg cursor-pointer hover:border-indigo-400 text-center sig-alex-brush text-2xl" data-font="Alex Brush">Alex Brush</div>
+                        <div class="sig-style-option p-4 border border-slate-200 rounded-lg cursor-pointer hover:border-indigo-400 text-center sig-sacramento text-2xl" data-font="Sacramento">Sacramento</div>
+                    </div>
+                </div>
+                
+                <!-- Drawn Signature -->
+                <div id="drawn-signature-panel" class="hidden mt-4">
+                    <canvas id="sig-canvas" class="w-full h-40 signature-canvas rounded-lg"></canvas>
+                    <button type="button" id="clear-sig-btn" class="mt-2 text-sm text-slate-500 hover:text-slate-700">Clear</button>
+                </div>
+                
+                <!-- Actions -->
+                <div class="mt-6 flex justify-end space-x-3">
+                    <button id="cancel-sig-btn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200">Cancel</button>
+                    <button id="apply-sig-btn" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-slate-400" disabled>Apply Signature</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="bg-white border-t border-slate-200 py-6 no-print">
+            <div class="max-w-6xl mx-auto px-4 text-center text-sm text-slate-500">
+                <p>Breanne Document Engine • Powered by <a href="https://simpli-fi-alpha.com" class="text-indigo-600 hover:underline">Simpli-FI Alpha</a></p>
+                <p class="mt-1">Electronic signatures are legally binding under ESIGN Act and UETA.</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+    /**
+     * Breanne v2 - Client-side Application Logic
+     */
+    (function() {
+        'use strict';
+
+        // State
+        let state = {
+            currentStep: 'upload',
+            document: null,
+            formData: {},
+            signatures: {},
+            pdfBytes: null,
+            activeSignatureField: null,
+            selectedFont: null,
+        };
+
+        // DOM Elements
+        const els = {};
+        
+        // Initialize on DOM ready
+        document.addEventListener('DOMContentLoaded', init);
+
+        function init() {
+            cacheElements();
+            attachEventListeners();
+            initSignatureCanvas();
+        }
+
+        function cacheElements() {
+            els.uploadSection = document.getElementById('upload-section');
+            els.loadingSection = document.getElementById('loading-section');
+            els.formSection = document.getElementById('form-section');
+            els.downloadSection = document.getElementById('download-section');
+            els.dropZone = document.getElementById('drop-zone');
+            els.fileInput = document.getElementById('file-input');
+            els.uploadError = document.getElementById('upload-error');
+            els.loadingMessage = document.getElementById('loading-message');
+            els.documentForm = document.getElementById('document-form');
+            els.formTitle = document.getElementById('form-title');
+            els.formSubtitle = document.getElementById('form-subtitle');
+            els.generateBtn = document.getElementById('generate-btn');
+            els.previewBtn = document.getElementById('preview-btn');
+            els.backBtn = document.getElementById('back-btn');
+            els.filledCount = document.getElementById('filled-count');
+            els.totalCount = document.getElementById('total-count');
+            els.signatureModal = document.getElementById('signature-modal');
+            els.sigNameInput = document.getElementById('sig-name-input');
+            els.sigCanvas = document.getElementById('sig-canvas');
+            els.downloadLink = document.getElementById('download-link');
+            els.emailLink = document.getElementById('email-link');
+            els.newDocBtn = document.getElementById('new-doc-btn');
+            
+            // Step indicators
+            els.step1 = document.getElementById('step-1');
+            els.step2 = document.getElementById('step-2');
+            els.step3 = document.getElementById('step-3');
+        }
+
+        function attachEventListeners() {
+            // File upload
+            els.dropZone.addEventListener('dragover', handleDragOver);
+            els.dropZone.addEventListener('dragleave', handleDragLeave);
+            els.dropZone.addEventListener('drop', handleDrop);
+            els.fileInput.addEventListener('change', handleFileSelect);
+            
+            // Form actions
+            els.generateBtn.addEventListener('click', handleGenerate);
+            els.previewBtn.addEventListener('click', handlePreview);
+            els.backBtn.addEventListener('click', handleBack);
+            els.newDocBtn.addEventListener('click', handleBack);
+            
+            // Signature modal
+            document.getElementById('tab-typed').addEventListener('click', () => switchSigTab('typed'));
+            document.getElementById('tab-drawn').addEventListener('click', () => switchSigTab('drawn'));
+            document.getElementById('cancel-sig-btn').addEventListener('click', closeSignatureModal);
+            document.getElementById('apply-sig-btn').addEventListener('click', applySignature);
+            document.getElementById('clear-sig-btn').addEventListener('click', clearSignatureCanvas);
+            els.sigNameInput.addEventListener('input', updateSignaturePreview);
+            
+            // Signature style selection
+            document.querySelectorAll('.sig-style-option').forEach(opt => {
+                opt.addEventListener('click', () => selectSignatureStyle(opt));
+            });
+        }
+
+        // Step Management
+        function showStep(step) {
+            state.currentStep = step;
+            
+            // Hide all sections
+            els.uploadSection.classList.add('hidden');
+            els.loadingSection.classList.add('hidden');
+            els.formSection.classList.add('hidden');
+            els.downloadSection.classList.add('hidden');
+            
+            // Show active section
+            switch(step) {
+                case 'upload':
+                    els.uploadSection.classList.remove('hidden');
+                    updateStepIndicator(1);
+                    break;
+                case 'loading':
+                    els.loadingSection.classList.remove('hidden');
+                    break;
+                case 'form':
+                    els.formSection.classList.remove('hidden');
+                    updateStepIndicator(2);
+                    break;
+                case 'download':
+                    els.downloadSection.classList.remove('hidden');
+                    updateStepIndicator(3);
+                    break;
+            }
+        }
+
+        function updateStepIndicator(activeStep) {
+            const steps = [els.step1, els.step2, els.step3];
+            steps.forEach((el, i) => {
+                if (i + 1 <= activeStep) {
+                    el.classList.remove('bg-slate-100', 'text-slate-500');
+                    el.classList.add('bg-indigo-100', 'text-indigo-700');
+                } else {
+                    el.classList.add('bg-slate-100', 'text-slate-500');
+                    el.classList.remove('bg-indigo-100', 'text-indigo-700');
+                }
+            });
+        }
+
+        // File Handling
+        function handleDragOver(e) {
+            e.preventDefault();
+            els.dropZone.classList.add('border-indigo-400', 'bg-indigo-50');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            els.dropZone.classList.remove('border-indigo-400', 'bg-indigo-50');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            els.dropZone.classList.remove('border-indigo-400', 'bg-indigo-50');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) processFile(files[0]);
+        }
+
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) processFile(e.target.files[0]);
+        }
+
+        async function processFile(file) {
+            // Validate file type
+            const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
+            if (!validTypes.includes(file.type) && !file.name.endsWith('.docx') && !file.name.endsWith('.pdf')) {
+                showError('Please upload a PDF or DOCX file.');
+                return;
+            }
+
+            // Validate file size
+            if (file.size > 25 * 1024 * 1024) {
+                showError('File size must be less than 25MB.');
+                return;
+            }
+
+            showStep('loading');
+            els.loadingMessage.textContent = 'Analyzing document...';
+
+            try {
+                let parsedDoc;
+                
+                if (file.name.endsWith('.docx')) {
+                    parsedDoc = await parseDocx(file);
+                } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+                    // For PDFs, we'll extract text (simplified for demo)
+                    parsedDoc = await parsePdfBasic(file);
+                } else {
+                    throw new Error('Unsupported file type');
+                }
+
+                state.document = parsedDoc;
+                state.document.originalFile = file;
+                state.document.filename = file.name.replace(/\.[^/.]+$/, '') + '_filled.pdf';
+                
+                renderForm(parsedDoc);
+                showStep('form');
+                
+            } catch (error) {
+                console.error('Processing error:', error);
+                showError('Could not process this document. Please try a different file.');
+                showStep('upload');
+            }
+        }
+
+        async function parseDocx(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            return parseDocumentText(result.value);
+        }
+
+        async function parsePdfBasic(file) {
+            // For now, use basic text extraction
+            // In production, use PDF.js or backend processing
+            const text = await file.text().catch(() => '');
+            return parseDocumentText(text || 'Please fill in the following fields:');
+        }
+
+        function parseDocumentText(text) {
+            // Field detection patterns
+            const patterns = [
+                { regex: /(?:^|\n)\s*(signature|sign here|subscriber signature)[:\s]*(?:_+|\*+)?/gi, type: 'signature', label: 'Signature' },
+                { regex: /(?:^|\n)\s*(date|dated|effective date|date of birth|dob)[:\s]*(?:_+|\*+)?/gi, type: 'date', label: 'Date' },
+                { regex: /(?:^|\n)\s*(printed name|print name|full name|legal name)[:\s]*(?:_+|\*+)?/gi, type: 'text', label: 'Printed Name' },
+                { regex: /(?:^|\n)\s*(subscriber name|investor name|client name)[:\s]*(?:_+|\*+)?/gi, type: 'text', label: 'Name' },
+                { regex: /(?:^|\n)\s*(address|street address|mailing address)[:\s]*(?:_+|\*+)?/gi, type: 'textarea', label: 'Address' },
+                { regex: /(?:^|\n)\s*(city|state|zip)[,\s]*(?:_+|\*+)?/gi, type: 'text', label: 'City, State, ZIP' },
+                { regex: /(?:^|\n)\s*(telephone|phone|phone number)[:\s]*(?:_+|\*+)?/gi, type: 'tel', label: 'Telephone' },
+                { regex: /(?:^|\n)\s*(email|e-mail)[:\s]*(?:_+|\*+)?/gi, type: 'email', label: 'Email' },
+                { regex: /(?:^|\n)\s*(ssn|social security|tax id|tin)[:\s]*(?:_+|\*+)?/gi, type: 'ssn', label: 'Tax ID/SSN' },
+                { regex: /(?:^|\n)\s*(amount|subscription amount|\$)[:\s]*(?:_+|\*+)?/gi, type: 'money', label: 'Amount' },
+                { regex: /(?:^|\n)\s*(title|position)[:\s]*(?:_+|\*+)?/gi, type: 'text', label: 'Title' },
+                { regex: /(?:^|\n)\s*(entity name|company name|organization)[:\s]*(?:_+|\*+)?/gi, type: 'text', label: 'Entity Name' },
+                { regex: /(?:^|\n)\s*(initials?)[:\s]*(?:_+|\*+)?/gi, type: 'initials', label: 'Initials' },
+                { regex: /([A-Za-z][A-Za-z\s]+?):\s*_{3,}/g, type: 'text', label: null, extractLabel: true },
+            ];
+
+            const fields = [];
+            const seen = new Set();
+
+            for (const p of patterns) {
+                p.regex.lastIndex = 0;
+                let match;
+                while ((match = p.regex.exec(text)) !== null) {
+                    let label = p.label;
+                    if (p.extractLabel && match[1]) {
+                        label = match[1].trim();
+                    }
+                    
+                    const key = `${label}-${p.type}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    
+                    fields.push({
+                        id: label.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+                        label: label,
+                        type: p.type,
+                        required: match[0].includes('*'),
+                        value: '',
+                    });
+                }
+            }
+
+            // Extract title from first line
+            const firstLine = text.split('\n').find(l => l.trim());
+            const title = firstLine && firstLine.length < 100 ? firstLine.trim() : 'Document';
+
+            // If no fields found, add defaults
+            if (fields.length === 0) {
+                fields.push(
+                    { id: 'name', label: 'Name', type: 'text', required: true, value: '' },
+                    { id: 'signature', label: 'Signature', type: 'signature', required: true, value: '' },
+                    { id: 'date', label: 'Date', type: 'date', required: true, value: '' },
+                );
+            }
+
+            return {
+                title: title,
+                fields: fields,
+                staticContent: extractStaticParagraphs(text),
+            };
+        }
+
+        function extractStaticParagraphs(text) {
+            const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 50);
+            return paragraphs.slice(0, 10).map(p => p.trim());
+        }
+
+        // Form Rendering
+        function renderForm(doc) {
+            els.formTitle.textContent = doc.title || 'Document Form';
+            els.formSubtitle.textContent = `${doc.fields.length} fields to complete`;
+            els.totalCount.textContent = doc.fields.length;
+            
+            let html = '';
+            
+            // Group fields by type for better UX
+            const sigFields = doc.fields.filter(f => f.type === 'signature');
+            const otherFields = doc.fields.filter(f => f.type !== 'signature');
+            
+            if (otherFields.length > 0) {
+                html += `<div class="form-section"><h3 class="text-lg font-semibold text-slate-900 mb-4">Information</h3>`;
+                for (const field of otherFields) {
+                    html += renderField(field);
+                }
+                html += `</div>`;
+            }
+            
+            if (sigFields.length > 0) {
+                html += `<div class="form-section"><h3 class="text-lg font-semibold text-slate-900 mb-4">Signatures</h3>`;
+                for (const field of sigFields) {
+                    html += renderField(field);
+                }
+                html += `</div>`;
+            }
+            
+            els.documentForm.innerHTML = html;
+            
+            // Attach field event listeners
+            attachFieldListeners();
+            updateValidation();
+        }
+
+        function renderField(field) {
+            const req = field.required ? '<span class="text-red-500">*</span>' : '';
+            const reqAttr = field.required ? 'required' : '';
+            
+            let inputHtml = '';
+            
+            switch(field.type) {
+                case 'signature':
+                    inputHtml = `
+                        <div class="signature-box border-2 border-dashed border-slate-300 rounded-lg p-4 bg-slate-50 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all" 
+                             data-field-id="${field.id}">
+                            <div class="sig-placeholder text-center text-slate-400">
+                                <svg class="h-8 w-8 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                                <p class="mt-1 text-sm">Click to sign</p>
+                            </div>
+                            <div class="sig-preview hidden text-center">
+                                <p class="text-2xl sig-text"></p>
+                                <button type="button" class="mt-1 text-xs text-indigo-600 hover:underline sig-change-btn">Change</button>
+                            </div>
+                        </div>
+                        <input type="hidden" name="${field.id}" id="${field.id}" ${reqAttr}>
+                    `;
+                    break;
+                    
+                case 'date':
+                    inputHtml = `<input type="date" name="${field.id}" id="${field.id}" class="form-input" ${reqAttr}>`;
+                    break;
+                    
+                case 'textarea':
+                    inputHtml = `<textarea name="${field.id}" id="${field.id}" rows="3" class="form-input" ${reqAttr}></textarea>`;
+                    break;
+                    
+                case 'tel':
+                    inputHtml = `<input type="tel" name="${field.id}" id="${field.id}" class="form-input" placeholder="(555) 555-5555" ${reqAttr}>`;
+                    break;
+                    
+                case 'email':
+                    inputHtml = `<input type="email" name="${field.id}" id="${field.id}" class="form-input" placeholder="email@example.com" ${reqAttr}>`;
+                    break;
+                    
+                case 'ssn':
+                    inputHtml = `<input type="text" name="${field.id}" id="${field.id}" class="form-input" placeholder="XXX-XX-XXXX" maxlength="11" ${reqAttr}>`;
+                    break;
+                    
+                case 'money':
+                    inputHtml = `<input type="text" name="${field.id}" id="${field.id}" class="form-input" placeholder="$0.00" ${reqAttr}>`;
+                    break;
+                    
+                case 'initials':
+                    inputHtml = `<input type="text" name="${field.id}" id="${field.id}" class="form-input w-24" maxlength="5" style="text-transform: uppercase" ${reqAttr}>`;
+                    break;
+                    
+                default:
+                    inputHtml = `<input type="text" name="${field.id}" id="${field.id}" class="form-input" ${reqAttr}>`;
+            }
+            
+            return `
+                <div class="form-field" data-field-type="${field.type}">
+                    <label for="${field.id}" class="form-label">${field.label} ${req}</label>
+                    ${inputHtml}
+                </div>
+            `;
+        }
+
+        function attachFieldListeners() {
+            // Regular inputs
+            els.documentForm.querySelectorAll('input, textarea').forEach(input => {
+                input.addEventListener('input', () => {
+                    state.formData[input.name] = input.value;
+                    updateValidation();
+                });
+            });
+            
+            // Signature boxes
+            els.documentForm.querySelectorAll('.signature-box').forEach(box => {
+                box.addEventListener('click', () => openSignatureModal(box.dataset.fieldId));
+            });
+            
+            // Phone number formatting
+            els.documentForm.querySelectorAll('input[type="tel"]').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    let x = e.target.value.replace(/\D/g, '').match(/(\d{0,3})(\d{0,3})(\d{0,4})/);
+                    e.target.value = !x[2] ? x[1] : '(' + x[1] + ') ' + x[2] + (x[3] ? '-' + x[3] : '');
+                });
+            });
+            
+            // SSN formatting
+            els.documentForm.querySelectorAll('input[name*="ssn"], input[name*="tax"]').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    let x = e.target.value.replace(/\D/g, '').match(/(\d{0,3})(\d{0,2})(\d{0,4})/);
+                    e.target.value = !x[2] ? x[1] : x[1] + '-' + x[2] + (x[3] ? '-' + x[3] : '');
+                });
+            });
+            
+            // Money formatting
+            els.documentForm.querySelectorAll('input[name*="amount"]').forEach(input => {
+                input.addEventListener('blur', (e) => {
+                    let v = parseFloat(e.target.value.replace(/[^0-9.-]+/g, ''));
+                    if (!isNaN(v)) e.target.value = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
+                });
+            });
+        }
+
+        function updateValidation() {
+            let filled = 0;
+            let total = 0;
+            let allValid = true;
+            
+            els.documentForm.querySelectorAll('input[required], textarea[required]').forEach(input => {
+                total++;
+                if (input.value.trim()) filled++;
+                else allValid = false;
+            });
+            
+            els.filledCount.textContent = filled;
+            els.totalCount.textContent = total;
+            els.generateBtn.disabled = !allValid;
+        }
+
+        // Signature Modal
+        function openSignatureModal(fieldId) {
+            state.activeSignatureField = fieldId;
+            state.selectedFont = null;
+            els.sigNameInput.value = '';
+            clearSignatureCanvas();
+            switchSigTab('typed');
+            els.signatureModal.classList.remove('hidden');
+            els.sigNameInput.focus();
+            
+            // Clear style selection
+            document.querySelectorAll('.sig-style-option').forEach(opt => {
+                opt.classList.remove('border-indigo-500', 'bg-indigo-50');
+            });
+            document.getElementById('apply-sig-btn').disabled = true;
+        }
+
+        function closeSignatureModal() {
+            els.signatureModal.classList.add('hidden');
+            state.activeSignatureField = null;
+        }
+
+        function switchSigTab(tab) {
+            const typedBtn = document.getElementById('tab-typed');
+            const drawnBtn = document.getElementById('tab-drawn');
+            const typedPanel = document.getElementById('typed-signature-panel');
+            const drawnPanel = document.getElementById('drawn-signature-panel');
+            
+            if (tab === 'typed') {
+                typedBtn.classList.add('border-b-2', 'border-indigo-500', 'text-indigo-600');
+                typedBtn.classList.remove('text-slate-500');
+                drawnBtn.classList.remove('border-b-2', 'border-indigo-500', 'text-indigo-600');
+                drawnBtn.classList.add('text-slate-500');
+                typedPanel.classList.remove('hidden');
+                drawnPanel.classList.add('hidden');
+            } else {
+                drawnBtn.classList.add('border-b-2', 'border-indigo-500', 'text-indigo-600');
+                drawnBtn.classList.remove('text-slate-500');
+                typedBtn.classList.remove('border-b-2', 'border-indigo-500', 'text-indigo-600');
+                typedBtn.classList.add('text-slate-500');
+                drawnPanel.classList.remove('hidden');
+                typedPanel.classList.add('hidden');
+                initSignatureCanvas();
+            }
+        }
+
+        function selectSignatureStyle(opt) {
+            document.querySelectorAll('.sig-style-option').forEach(o => {
+                o.classList.remove('border-indigo-500', 'bg-indigo-50');
+            });
+            opt.classList.add('border-indigo-500', 'bg-indigo-50');
+            state.selectedFont = opt.dataset.font;
+            updateApplyButton();
+        }
+
+        function updateSignaturePreview() {
+            const name = els.sigNameInput.value.trim();
+            document.querySelectorAll('.sig-style-option').forEach(opt => {
+                opt.textContent = name || opt.dataset.font;
+            });
+            updateApplyButton();
+        }
+
+        function updateApplyButton() {
+            const hasName = els.sigNameInput.value.trim().length > 0;
+            const hasFont = state.selectedFont !== null;
+            const hasDrawn = els.sigCanvas.dataset.signed === 'true';
+            document.getElementById('apply-sig-btn').disabled = !(hasName && hasFont) && !hasDrawn;
+        }
+
+        function applySignature() {
+            const fieldId = state.activeSignatureField;
+            if (!fieldId) return;
+            
+            const hasDrawn = els.sigCanvas.dataset.signed === 'true';
+            let sigData;
+            
+            if (hasDrawn) {
+                sigData = {
+                    type: 'drawn',
+                    dataUrl: els.sigCanvas.toDataURL(),
+                };
+            } else {
+                sigData = {
+                    type: 'typed',
+                    name: els.sigNameInput.value.trim(),
+                    font: state.selectedFont,
+                };
+            }
+            
+            state.signatures[fieldId] = sigData;
+            state.formData[fieldId] = sigData.type === 'typed' ? sigData.name : '[Signed]';
+            
+            // Update UI
+            const box = els.documentForm.querySelector(`.signature-box[data-field-id="${fieldId}"]`);
+            const hiddenInput = document.getElementById(fieldId);
+            
+            if (box) {
+                box.querySelector('.sig-placeholder').classList.add('hidden');
+                const preview = box.querySelector('.sig-preview');
+                preview.classList.remove('hidden');
+                
+                if (sigData.type === 'typed') {
+                    const fontClass = {
+                        'Great Vibes': 'sig-great-vibes',
+                        'Tangerine': 'sig-tangerine',
+                        'Alex Brush': 'sig-alex-brush',
+                        'Sacramento': 'sig-sacramento',
+                    }[sigData.font] || '';
+                    preview.querySelector('.sig-text').textContent = sigData.name;
+                    preview.querySelector('.sig-text').className = `text-2xl sig-text ${fontClass}`;
+                } else {
+                    preview.innerHTML = `
+                        <img src="${sigData.dataUrl}" alt="Signature" class="h-12 mx-auto">
+                        <button type="button" class="mt-1 text-xs text-indigo-600 hover:underline sig-change-btn">Change</button>
+                    `;
+                }
+                
+                box.classList.remove('border-dashed', 'border-slate-300');
+                box.classList.add('border-solid', 'border-green-400', 'bg-green-50');
+                
+                // Reattach change button listener
+                const changeBtn = box.querySelector('.sig-change-btn');
+                if (changeBtn) {
+                    changeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openSignatureModal(fieldId);
+                    });
+                }
+            }
+            
+            if (hiddenInput) {
+                hiddenInput.value = sigData.type === 'typed' ? sigData.name : 'signed';
+            }
+            
+            closeSignatureModal();
+            updateValidation();
+        }
+
+        // Signature Canvas (for drawn signatures)
+        function initSignatureCanvas() {
+            const canvas = els.sigCanvas;
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * 2;
+            canvas.height = rect.height * 2;
+            ctx.scale(2, 2);
+            
+            let drawing = false;
+            
+            const getPos = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+                const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+                return { x, y };
+            };
+            
+            const start = (e) => {
+                drawing = true;
+                const pos = getPos(e);
+                ctx.beginPath();
+                ctx.moveTo(pos.x, pos.y);
+                e.preventDefault();
+            };
+            
+            const draw = (e) => {
+                if (!drawing) return;
+                const pos = getPos(e);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                e.preventDefault();
+            };
+            
+            const stop = () => {
+                if (drawing) {
+                    drawing = false;
+                    canvas.dataset.signed = 'true';
+                    updateApplyButton();
+                }
+            };
+            
+            canvas.addEventListener('mousedown', start);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stop);
+            canvas.addEventListener('mouseleave', stop);
+            canvas.addEventListener('touchstart', start);
+            canvas.addEventListener('touchmove', draw);
+            canvas.addEventListener('touchend', stop);
+        }
+
+        function clearSignatureCanvas() {
+            const canvas = els.sigCanvas;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.dataset.signed = 'false';
+            updateApplyButton();
+        }
+
+        // PDF Generation
+        async function handleGenerate() {
+            showStep('loading');
+            els.loadingMessage.textContent = 'Generating PDF...';
+            
+            try {
+                const pdfBytes = await generatePdf();
+                state.pdfBytes = pdfBytes;
+                
+                // Create download URL
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                
+                els.downloadLink.href = url;
+                els.downloadLink.download = state.document.filename;
+                
+                // Email link
+                const subject = encodeURIComponent(`Completed: ${state.document.title}`);
+                const body = encodeURIComponent('Please find the completed document attached.');
+                els.emailLink.href = `mailto:?subject=${subject}&body=${body}`;
+                
+                showStep('download');
+                
+            } catch (error) {
+                console.error('PDF generation error:', error);
+                showError('Failed to generate PDF. Please try again.');
+                showStep('form');
+            }
+        }
+
+        async function generatePdf() {
+            const { PDFDocument, rgb, StandardFonts } = PDFLib;
+            
+            const pdfDoc = await PDFDocument.create();
+            const font = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+            const boldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+            
+            // Page setup
+            const PAGE_WIDTH = 612;
+            const PAGE_HEIGHT = 792;
+            const MARGIN = 72;
+            const CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN;
+            const LINE_HEIGHT = 16;
+            
+            let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+            let y = PAGE_HEIGHT - MARGIN;
+            let pageNum = 1;
+            
+            // Helper: add new page if needed
+            const checkPageBreak = (neededHeight) => {
+                if (y - neededHeight < MARGIN) {
+                    page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+                    y = PAGE_HEIGHT - MARGIN;
+                    pageNum++;
+                    return true;
+                }
+                return false;
+            };
+            
+            // Helper: draw text with word wrap
+            const drawText = (text, options = {}) => {
+                const fontSize = options.fontSize || 11;
+                const textFont = options.bold ? boldFont : font;
+                const color = options.color || rgb(0, 0, 0);
+                
+                const words = text.split(' ');
+                let line = '';
+                const lines = [];
+                
+                for (const word of words) {
+                    const testLine = line ? line + ' ' + word : word;
+                    const width = textFont.widthOfTextAtSize(testLine, fontSize);
+                    if (width > CONTENT_WIDTH) {
+                        lines.push(line);
+                        line = word;
+                    } else {
+                        line = testLine;
+                    }
+                }
+                if (line) lines.push(line);
+                
+                for (const l of lines) {
+                    checkPageBreak(LINE_HEIGHT);
+                    page.drawText(l, {
+                        x: MARGIN,
+                        y: y,
+                        size: fontSize,
+                        font: textFont,
+                        color: color,
+                    });
+                    y -= LINE_HEIGHT;
+                }
+                
+                return lines.length * LINE_HEIGHT;
+            };
+            
+            // Title
+            y -= 10;
+            page.drawText(state.document.title || 'Document', {
+                x: MARGIN,
+                y: y,
+                size: 18,
+                font: boldFont,
+                color: rgb(0, 0.14, 0.27),
+            });
+            y -= 30;
+            
+            // Static content (paragraphs)
+            if (state.document.staticContent) {
+                for (const para of state.document.staticContent.slice(0, 5)) {
+                    checkPageBreak(60);
+                    drawText(para);
+                    y -= 10;
+                }
+            }
+            
+            y -= 20;
+            
+            // Fields
+            checkPageBreak(40);
+            page.drawText('COMPLETED INFORMATION', {
+                x: MARGIN,
+                y: y,
+                size: 12,
+                font: boldFont,
+                color: rgb(0, 0.14, 0.27),
+            });
+            y -= 5;
+            page.drawLine({
+                start: { x: MARGIN, y: y },
+                end: { x: PAGE_WIDTH - MARGIN, y: y },
+                thickness: 0.5,
+                color: rgb(0.7, 0.7, 0.7),
+            });
+            y -= 20;
+            
+            for (const field of state.document.fields) {
+                checkPageBreak(field.type === 'signature' ? 80 : 30);
+                
+                // Label
+                page.drawText(field.label + ':', {
+                    x: MARGIN,
+                    y: y,
+                    size: 10,
+                    font: font,
+                    color: rgb(0.4, 0.4, 0.4),
+                });
+                
+                const labelWidth = font.widthOfTextAtSize(field.label + ':', 10);
+                const valueX = MARGIN + labelWidth + 10;
+                
+                if (field.type === 'signature') {
+                    const sigData = state.signatures[field.id];
+                    
+                    if (sigData) {
+                        if (sigData.type === 'typed') {
+                            // Typed signature
+                            page.drawText(sigData.name, {
+                                x: valueX,
+                                y: y,
+                                size: 18,
+                                font: font, // Using standard font - in production, embed script fonts
+                                color: rgb(0, 0, 0.4),
+                            });
+                        } else {
+                            // Drawn signature - embed as image
+                            try {
+                                const sigImage = await pdfDoc.embedPng(sigData.dataUrl);
+                                const scale = 50 / sigImage.height;
+                                page.drawImage(sigImage, {
+                                    x: valueX,
+                                    y: y - 40,
+                                    width: sigImage.width * scale,
+                                    height: sigImage.height * scale,
+                                });
+                            } catch (e) {
+                                console.warn('Could not embed signature image:', e);
+                            }
+                        }
+                        
+                        // Date line
+                        const today = new Date().toLocaleDateString();
+                        page.drawText('Date: ' + today, {
+                            x: valueX + 200,
+                            y: y,
+                            size: 10,
+                            font: font,
+                            color: rgb(0, 0, 0),
+                        });
+                    }
+                    
+                    y -= 50;
+                } else {
+                    // Regular field
+                    const value = state.formData[field.id] || '';
+                    page.drawText(value, {
+                        x: valueX,
+                        y: y,
+                        size: 11,
+                        font: font,
+                        color: rgb(0, 0, 0),
+                    });
+                    
+                    // Underline
+                    page.drawLine({
+                        start: { x: valueX, y: y - 3 },
+                        end: { x: PAGE_WIDTH - MARGIN, y: y - 3 },
+                        thickness: 0.5,
+                        color: rgb(0.85, 0.85, 0.85),
+                    });
+                }
+                
+                y -= 25;
+            }
+            
+            // Footer on each page
+            const pages = pdfDoc.getPages();
+            for (let i = 0; i < pages.length; i++) {
+                const p = pages[i];
+                const footerText = `Page ${i + 1} of ${pages.length} • Generated by Breanne`;
+                const footerWidth = font.widthOfTextAtSize(footerText, 8);
+                p.drawText(footerText, {
+                    x: (PAGE_WIDTH - footerWidth) / 2,
+                    y: 30,
+                    size: 8,
+                    font: font,
+                    color: rgb(0.6, 0.6, 0.6),
+                });
+            }
+            
+            return await pdfDoc.save();
+        }
+
+        function handlePreview() {
+            // For now, just generate and show in new tab
+            handleGenerate().then(() => {
+                if (state.pdfBytes) {
+                    const blob = new Blob([state.pdfBytes], { type: 'application/pdf' });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                }
+            });
+        }
+
+        function handleBack() {
+            state = {
+                currentStep: 'upload',
+                document: null,
+                formData: {},
+                signatures: {},
+                pdfBytes: null,
+                activeSignatureField: null,
+                selectedFont: null,
+            };
+            els.fileInput.value = '';
+            showStep('upload');
+        }
+
+        function showError(message) {
+            els.uploadError.textContent = message;
+            els.uploadError.classList.remove('hidden');
+            setTimeout(() => els.uploadError.classList.add('hidden'), 5000);
+        }
+    })();
+    </script>
+</body>
+</html>
